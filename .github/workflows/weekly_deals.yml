@@ -1,0 +1,42 @@
+name: Weekly Deals
+
+on:
+  schedule:
+    - cron: "0 14 * * 0"   # Sundays 14:00 UTC (~9am ET)
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run weekly scrape
+        run: |
+          python weekly_deals.py --since 7 --out deals.csv --out_json deals.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-deals
+          path: |
+            deals.csv
+            deals.json
+
+      # OPTIONAL: commit outputs back into the repo so you always have history
+      - name: Commit outputs
+        run: |
+          git config user.name "weekly-deals-bot"
+          git config user.email "weekly-deals-bot@users.noreply.github.com"
+          git add deals.csv deals.json || true
+          git commit -m "Weekly deals output" || exit 0
+          git push
