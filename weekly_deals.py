@@ -211,7 +211,7 @@ def gdelt_query(days: int) -> List[DealItem]:
         f.write(r.text or "")
 
     # Handle GDELT rate limiting gracefully (GitHub Actions IPs get throttled)
-if r.status_code == 429:
+    if r.status_code == 429:
     # Wait ~6-10 seconds and retry once
     wait_s = 6 + random.random() * 4
     print(f"GDELT rate-limited (429). Sleeping {wait_s:.1f}s then retrying once...")
@@ -221,13 +221,13 @@ if r.status_code == 429:
     with open("gdelt_raw.txt", "w", encoding="utf-8") as f:
         f.write(r.text or "")
 
-if r.status_code != 200:
+    if r.status_code != 200:
     print("GDELT failed; returning empty list instead of crashing.")
     return []
 
-try:
+    try:
     data = r.json()
-except Exception:
+    except Exception:
     print("GDELT returned non-JSON; returning empty list.")
     return []
 
