@@ -222,9 +222,7 @@ def gdelt_query(days: int) -> List[DealItem]:
         blob = f"{title} {a.get('snippet','') or ''}"
 
         # Keep post-filter, but slightly looser
-        if not contains_keywords(blob, CANNABIS_TERMS, DEAL_TERMS):
-            continue
-
+        
         out.append(DealItem(
             source=f"GDELT ({clean_text(a.get('domain','')) or 'news'})",
             source_type="news",
@@ -330,9 +328,10 @@ def main():
     args = ap.parse_args()
 
     items: List[DealItem] = []
-    edgar_items = fetch_edgar(args.since)
+    edgar_items = []  # temporarily disabled (was too noisy without a cannabis universe list)
     print("EDGAR items:", len(edgar_items))
     items += edgar_items
+
 
     gdelt_items = gdelt_query(args.since)
     print("GDELT items:", len(gdelt_items))
