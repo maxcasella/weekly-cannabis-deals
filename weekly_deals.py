@@ -201,12 +201,17 @@ def gdelt_query(days: int) -> List[DealItem]:
         "sort": "HybridRel",
     }
 
-    try:
         r = requests.get(GDELT_DOC_API, params=params, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-    except Exception:
-        return []
+    print("GDELT request URL:", r.url)
+    print("GDELT status:", r.status_code)
+    print("GDELT response (first 300 chars):", (r.text or "")[:300])
+
+    with open("gdelt_raw.txt", "w", encoding="utf-8") as f:
+        f.write(r.text or "")
+
+    r.raise_for_status()
+    data = r.json()
+
 
     out: List[DealItem] = []
     for a in data.get("articles", []) or []:
