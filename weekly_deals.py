@@ -128,10 +128,17 @@ def contains_keywords(text: str, required_any: List[str], deal_any: List[str]) -
 def fetch_edgar(days: int) -> List[DealItem]:
     out: List[DealItem] = []
     headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip, deflate"}
+
     for feed_url in EDGAR_RSS:
-        parsed = feedparser.parse(feed_url)
+        # SEC is picky: fetch with requests so we control headers, then parse the returned text
+        try:
+            r = requests.get(feed_url, headers=headers, timeout=30)
+            r.raise_for_status()
+            parsed = feedparser.parse(r.text)
+        except Exception:
+            continue
+
         for e in parsed.entries:
-            # Atom uses published / updated
             pub_raw = getattr(e, "published", None) or getattr(e, "updated", None)
             if not pub_raw:
                 continue
@@ -149,21 +156,16 @@ def fetch_edgar(days: int) -> List[DealItem]:
             summary = clean_text(getattr(e, "summary", "") or "")
 
             blob = f"{title} {summary}"
-            if not contains_keywords(blob, CANNABIS_TERMS, DEAL_TERMS):
+
+            # EDGAR summaries are sparse. For EDGAR, require deal language,
+            # and only *soft* cannabis hints (company name sometimes has it).
+            has_deal = any(k.lower() in blob.lower() for k in DEAL_TERMS)
+            has_cannabis_hint = re.search(r"(cannab|marij|hemp|dispens|thc|cbd)", blob.lower()) is not None
+
+            if not has_deal and not has_cannabis_hint:
                 continue
 
-            # Pull a tiny snippet from the filing index page (best-effort)
-            snippet = summary[:240]
-            if link:
-                try:
-                    r = requests.get(link, headers=headers, timeout=20)
-                    if r.ok:
-                        soup = BeautifulSoup(r.text, "lxml")
-                        page_text = clean_text(soup.get_text(" ", strip=True))
-                        snippet = page_text[:280]
-                except Exception:
-                    pass
-
+            snippet = summary[:280]
             out.append(DealItem(
                 source="SEC EDGAR",
                 source_type="edgar",
@@ -183,10 +185,9 @@ def fetch_edgar(days: int) -> List[DealItem]:
 # -------------------------
 
 def gdelt_query(days: int) -> List[DealItem]:
-    # Build a query that biases toward deal announcements + cannabis.
-    # GDELT uses "query=" with operators.
-    # We keep it simple to reduce weird failures.
-    q = "(" + " OR ".join([f'"{t}"' for t in CANNABIS_TERMS[:8]]) + ") AND (" + " OR ".join([f'"{t}"' for t in DEAL_TERMS[:10]]) + ")"
+    # Keep query broad; we’ll filter after we get results.
+    q = '(cannabis OR marijuana OR dispensary OR hemp) AND (acquire OR acquisition OR merger OR raises OR funding OR financing OR "credit facility" OR "private placement" OR "sale-leaseback")'
+
     start_dt = (iso_now() - timedelta(days=days)).strftime("%Y%m%d%H%M%S")
     end_dt = iso_now().strftime("%Y%m%d%H%M%S")
 
@@ -199,6 +200,7 @@ def gdelt_query(days: int) -> List[DealItem]:
         "enddatetime": end_dt,
         "sort": "HybridRel",
     }
+
     try:
         r = requests.get(GDELT_DOC_API, params=params, timeout=30)
         r.raise_for_status()
@@ -211,22 +213,20 @@ def gdelt_query(days: int) -> List[DealItem]:
         title = clean_text(a.get("title", ""))
         url = a.get("url", "") or ""
         seen = clean_text(a.get("seendate", ""))
-        src = clean_text(a.get("sourceCountry", "")) or clean_text(a.get("domain", "")) or "GDELT"
 
-        # GDELT seendate often like "20251208153000"
-        pub_iso = ""
+        pub_iso = iso_now().isoformat()
         if seen and re.fullmatch(r"\d{14}", seen):
             pub_dt = datetime.strptime(seen, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
             pub_iso = pub_dt.isoformat()
-        else:
-            pub_iso = iso_now().isoformat()
 
         blob = f"{title} {a.get('snippet','') or ''}"
+
+        # Keep post-filter, but slightly looser
         if not contains_keywords(blob, CANNABIS_TERMS, DEAL_TERMS):
             continue
 
         out.append(DealItem(
-            source=f"GDELT ({src})",
+            source=f"GDELT ({clean_text(a.get('domain','')) or 'news'})",
             source_type="news",
             published_at=pub_iso,
             title=title,
@@ -236,7 +236,6 @@ def gdelt_query(days: int) -> List[DealItem]:
             amount_guess=guess_amount(blob),
             snippet=clean_text(a.get("snippet", ""))[:280]
         ))
-
     return out
 
 
@@ -331,9 +330,17 @@ def main():
     args = ap.parse_args()
 
     items: List[DealItem] = []
-    items += fetch_edgar(args.since)
-    items += gdelt_query(args.since)
-    items += fetch_rss(args.since)
+    edgar_items = fetch_edgar(args.since)
+    print("EDGAR items:", len(edgar_items))
+    items += edgar_items
+
+    gdelt_items = gdelt_query(args.since)
+    print("GDELT items:", len(gdelt_items))
+    items += gdelt_items
+
+    rss_items = fetch_rss(args.since)
+    print("RSS items:", len(rss_items))
+    items += rss_items
 
     items = dedupe(items)
 
