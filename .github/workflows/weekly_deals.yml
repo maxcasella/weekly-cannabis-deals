@@ -31,3 +31,4 @@ jobs:
           path: |
             deals.csv
             deals.json
+            gdelt_raw.txt
