@@ -21,6 +21,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run weekly scrape
+        env:
+          BING_NEWS_KEY: ${{ secrets.BING_NEWS_KEY }}
         run: |
           python weekly_deals.py --since 7 --out deals.csv --out_json deals.json
 
