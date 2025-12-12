@@ -3,6 +3,8 @@ import csv
 import json
 import re
 import sys
+import time
+import random
 from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Iterable, Tuple
@@ -208,8 +210,27 @@ def gdelt_query(days: int) -> List[DealItem]:
     with open("gdelt_raw.txt", "w", encoding="utf-8") as f:
         f.write(r.text or "")
 
-    r.raise_for_status()
+    # Handle GDELT rate limiting gracefully (GitHub Actions IPs get throttled)
+if r.status_code == 429:
+    # Wait ~6-10 seconds and retry once
+    wait_s = 6 + random.random() * 4
+    print(f"GDELT rate-limited (429). Sleeping {wait_s:.1f}s then retrying once...")
+    time.sleep(wait_s)
+    r = requests.get(GDELT_DOC_API, params=params, timeout=30)
+    print("GDELT retry status:", r.status_code)
+    with open("gdelt_raw.txt", "w", encoding="utf-8") as f:
+        f.write(r.text or "")
+
+if r.status_code != 200:
+    print("GDELT failed; returning empty list instead of crashing.")
+    return []
+
+try:
     data = r.json()
+except Exception:
+    print("GDELT returned non-JSON; returning empty list.")
+    return []
+
 
     out: List[DealItem] = []
     for a in data.get("articles", []) or []:
