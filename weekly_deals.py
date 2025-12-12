@@ -185,7 +185,6 @@ def fetch_edgar(days: int) -> List[DealItem]:
 # -------------------------
 
 def gdelt_query(days: int) -> List[DealItem]:
-    # Keep query broad; we’ll filter after we get results.
     q = '(cannabis OR marijuana OR dispensary OR hemp) AND (acquire OR acquisition OR merger OR raises OR funding OR financing OR "credit facility" OR "private placement" OR "sale-leaseback")'
 
     start_dt = (iso_now() - timedelta(days=days)).strftime("%Y%m%d%H%M%S")
@@ -201,7 +200,7 @@ def gdelt_query(days: int) -> List[DealItem]:
         "sort": "HybridRel",
     }
 
-        r = requests.get(GDELT_DOC_API, params=params, timeout=30)
+    r = requests.get(GDELT_DOC_API, params=params, timeout=30)
     print("GDELT request URL:", r.url)
     print("GDELT status:", r.status_code)
     print("GDELT response (first 300 chars):", (r.text or "")[:300])
@@ -211,7 +210,6 @@ def gdelt_query(days: int) -> List[DealItem]:
 
     r.raise_for_status()
     data = r.json()
-
 
     out: List[DealItem] = []
     for a in data.get("articles", []) or []:
@@ -226,8 +224,6 @@ def gdelt_query(days: int) -> List[DealItem]:
 
         blob = f"{title} {a.get('snippet','') or ''}"
 
-        # Keep post-filter, but slightly looser
-        
         out.append(DealItem(
             source=f"GDELT ({clean_text(a.get('domain','')) or 'news'})",
             source_type="news",
@@ -239,6 +235,7 @@ def gdelt_query(days: int) -> List[DealItem]:
             amount_guess=guess_amount(blob),
             snippet=clean_text(a.get("snippet", ""))[:280]
         ))
+
     return out
 
 
